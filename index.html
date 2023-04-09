@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>D3.js Bar Graph</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <style>
+     .tooltip {
+        position: absolute;
+        text-align: center;
+        width: 100px;
+        height: 65px;
+        padding: 10px;
+        font: 12px sans-serif;
+        background: lightsteelblue;
+        border: 0px;
+        border-radius: 8px;
+        pointer-events: none;
+        transition: opacity 0.3s;
+      }
+      h1 {
+    text-align: center;
+  }
+    </style>
+  </head>
+  <body>
+    <h1>Minimum Priced Rooms in Hotels</h1>
+    <div>
+      <label for="roomType">Room Type:</label>
+      <select id="roomType">
+        <option value="Entire home/apt">Entire home/apt</option>
+        <option value="Private room">Private room</option>
+        <option value="Shared room">Shared room</option>
+      </select>
+    </div>
+</br>
+    <div id="chart"></div>
+</br>
+<h1>Iris Scatterplot</h1>
+    <div id="scatterPlot"></div>
+    <script>
+      d3.csv("roomlistings.csv").then(function(data) {
+        data.forEach(function(d) {
+            d.price = +d.price;
+        });
+        // Get room type from selection
+        var roomTypeSelect = document.getElementById("roomType");
+        var roomType = roomTypeSelect.options[roomTypeSelect.selectedIndex].value;
+        
+        // Filter data for a given room type
+        var filteredData = data.filter(function(d) {
+          return d.room_type === roomType;
+        });
+
+        // Aggregate data by host name and get minimum price
+        var aggregatedData = d3.nest()
+          .key(function(d) { return d.host_name; })
+          .rollup(function(v) {
+            return {
+              minPrice: d3.min(v, function(d) { return d.price; }),
+              location: v[0].neighbourhood,
+              totalRooms: v.length,
+              totalReviews: d3.sum(v, function(d) { return d.number_of_reviews; }),
+            };
+          })
+          .entries(filteredData);
+
+        // Set up chart dimensions
+var margin = { top: 20, right: 20, bottom: 100, left: 60 }; // Adjust bottom margin
+var width = 960 - margin.left - margin.right;
+var height = 400 - margin.top - margin.bottom;
+        // Create SVG element and set its dimensions
+        var svg = d3.select("#chart")
+          .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        // Create x-axis scale based on host names
+        var x = d3.scaleBand()
+          .domain(aggregatedData.map(function(d) { return d.key; }))
+          .range([0, width])
+          .padding(0.1);
+
+        // Create y-axis scale based on minimum prices
+        var y = d3.scaleLinear()
+          .domain([0, d3.max(aggregatedData, function(d) { return d.value.minPrice; })])
+          .range([height, 0]);
+        // Create y-axis scale
+var yAxis = d3.axisLeft(y).ticks(5).tickFormat(d3.format("$,"));
+svg.append("g").call(yAxis);
+
+        // Create color scale
+        var color = d3.scaleOrdinal()
+          .domain(aggregatedData.map(function(d) { return d.key; }))
+          .range(d3.schemeCategory10);
+
+        // Create tooltip
+        var tooltip = d3.select("body")
+        .append("div")
+    .attr("class", "tooltip");
+
+  // Function to update the chart
+  function updateChart() {
+    // Update bars
+    var bars = svg.selectAll(".bar")
+      .data(aggregatedData);
+
+    bars.exit().remove();
+
+    bars.enter()
+      .append("rect")
+        .attr("class", "bar")
+      .merge(bars)
+      .on("mouseover", function(d) {
+        tooltip.style("opacity", 1)
+          .html("Host: " + d.key +
+                "<br>Min Price: $ " + d.value.minPrice +
+                "<br>Total Rooms: " + d.value.totalRooms +
+                "<br>Total Reviews: " + d.value.totalReviews);
+      })
+      .on("mousemove", function(d) {
+        tooltip.style("left", (d3.event.pageX + 10) + "px")
+          .style("top", (d3.event.pageY - 10) + "px");
+      })
+      .on("mouseout", function(d) {
+        tooltip.style("opacity", 0);
+      })
+      .transition()
+      .duration(500)
+      .attr("x", function(d) { return x(d.key); })
+      .attr("y", function(d) { return y(d.value.minPrice); })
+      .attr("width", x.bandwidth())
+      .attr("height", function(d) { return height - y(d.value.minPrice); })
+      .attr("fill", function(d) { return color(d.key); });
+
+    // Update x-axis labels
+    var labels = svg.selectAll(".label")
+      .data(aggregatedData);
+
+    labels.exit().remove();
+
+    labels.enter()
+      .append("text")
+        .attr("class", "label")
+      .merge(labels)
+      .transition()
+      .duration(500)
+      .attr("x", function(d) { return x(d.key) + x.bandwidth() / 2; })
+      .attr("y", height + 30)
+      .attr("text-anchor", "middle")
+      .attr("transform", function(d) { return "rotate(-45," + (x(d.key) + x.bandwidth() / 2) + "," + (height + 30) + ")"; })
+      .text(function(d) { return d.key; });
+  }
+
+  // Create y-axis labels
+  svg.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 0 - margin.left)
+    .attr("x", 0 - (height / 2))
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Minimum Price");
+
+    // Add x-axis label
+svg.append("text")
+  .attr("x", width / 2)
+  .attr("y", height + margin.bottom - 10)
+  .style("text-anchor", "middle")
+  .text("Hotel Name");
+  // Initial chart render
+  updateChart();
+
+  // Update chart when room type selection changes
+  roomTypeSelect.addEventListener("change", function() {
+    roomType = roomTypeSelect.options[roomTypeSelect.selectedIndex].value;
+    filteredData = data.filter(function(d) {
+      return d.room_type === roomType;
+    });
+    aggregatedData = d3.nest()
+      .key(function(d) { return d.host_name; })
+      .rollup(function(v) {
+        return {
+          minPrice: d3.min(v, function(d) { return d.price; }),
+          location: v[0].neighbourhood,
+          totalRooms: v.length,
+          totalReviews: d3.sum(v, function(d) { return d.number_of_reviews; }),
+        };
+      })
+      .entries(filteredData);
+    x.domain(aggregatedData.map(function(d) { return d.key; }));
+    y.domain([0, d3.max(aggregatedData,       function(d) { return d.value.minPrice; })]);
+    color.domain(aggregatedData.map(function(d) { return d.key; }));
+    updateChart();
+  });
+});
+</script>
+<script>
+    // Set the dimensions of the canvas / graph
+    var margin = { top: 20, right: 20, bottom: 50, left: 50 },
+      width = 960 - margin.left - margin.right,
+      height = 400 - margin.top - margin.bottom;
+
+    // Set the ranges
+    var x = d3.scaleLinear().range([0, width]);
+    var y = d3.scaleLinear().range([height, 0]);
+
+    // Define the tooltip
+    var tooltip = d3
+      .select("#scatterPlot")
+      .append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0);
+
+    // Adds the svg canvas
+    var svg = d3
+      .select("#scatterPlot")
+      .append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+    // Load the data
+    d3.csv(
+      "https://raw.githubusercontent.com/uiuc-cse/data-fa14/gh-pages/data/iris.csv"
+    ).then(function (data) {
+      // Scale the range of the data
+      x.domain([
+        d3.min(data, function (d) {
+          return +d.sepal_length - 0.5;
+        }),
+        d3.max(data, function (d) {
+          return +d.sepal_length + 0.5;
+        }),
+      ]);
+      y.domain([
+        d3.min(data, function (d) {
+          return +d.sepal_width - 0.5;
+        }),
+        d3.max(data, function (d) {
+          return +d.sepal_width + 0.5;
+        }),
+      ]);
+
+      // Add the scatterplot
+      svg.selectAll("dot")
+        .data(data)
+        .enter()
+        .append("circle")
+        .attr("r", 5)
+        .attr("cx", function (d) {
+          return x(d.sepal_length);
+        })
+        .attr("cy", function (d) {
+          return y(d.sepal_width);
+        })
+        .style("fill", function (d) {
+          return d3.interpolateBlues(
+            (d.sepal_width - d3.min(data, function (d) {
+              return +d.sepal_width;
+            })) /
+              (d3.max(data, function (d) {
+                return +d.sepal_width;
+              }) -
+                d3.min(data, function (d) {
+                  return +d.sepal_width;
+                }))
+                );
+    })
+    .on("mouseover", function (d) {
+      tooltip
+        .transition()
+        .duration(200)
+        .style("opacity", 0.9);
+      tooltip
+        .html(d.species)
+        .style("left", d3.event.pageX + "px")
+        .style("top", d3.event.pageY - 28 + "px");
+    })
+    .on("mouseout", function (d) {
+      tooltip.transition().duration(500).style("opacity", 0);
+    });
+
+  // Add the X Axis
+  svg.append("g")
+    .attr("transform", "translate(0," + height + ")")
+    .call(d3.axisBottom(x));
+
+  // Add the Y Axis
+  svg.append("g").call(d3.axisLeft(y));
+
+  // Add the X Axis label
+  svg.append("text")
+    .attr(
+      "transform",
+      "translate(" + width / 2 + " ," + (height + margin.top + 20) + ")"
+    )
+    .style("text-anchor", "middle")
+    .text("Sepal Length");
+
+  // Add the Y Axis label
+  svg.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("y", 0 - margin.left)
+    .attr("x", 0 - height / 2)
+    .attr("dy", "1em")
+    .style("text-anchor", "middle")
+    .text("Sepal Width");
+});
+</script>
+</body>
+</html>
+      
+
